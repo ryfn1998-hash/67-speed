@@ -2,41 +2,154 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>FR｜67 SPEED - MediaPipe AI 專業版</title>
+    <title>FR｜67 SPEED - ULTIMATE CEO EDITION</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
     
     <style>
-        :root { --fr-blue: #00d4ff; --fr-bg: #050508; }
-        body { background: var(--fr-bg); color: #fff; font-family: sans-serif; margin: 0; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
-        .vision-container { position: relative; width: 80%; height: 65vh; border: 3px solid #333; border-radius: 20px; overflow: hidden; }
-        #webcam { display: none; } /* 隱藏原始影像，改顯示繪圖層 */
+        :root { 
+            --neon-blue: #00f2ff; 
+            --neon-pink: #ff007f;
+            --glass: rgba(255, 255, 255, 0.1);
+        }
+        
+        body, html { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            background: #000; color: #fff; font-family: 'Orbitron', sans-serif;
+            overflow: hidden;
+        }
+
+        /* 霓虹動態背景 */
+        body::before {
+            content: ""; position: absolute; width: 200%; height: 200%;
+            background: radial-gradient(circle, #050505 0%, #111 50%, #000 100%);
+            z-index: -1; animation: rotateBg 20s linear infinite;
+        }
+
+        /* 主容器 */
+        .container {
+            display: grid;
+            grid-template-columns: 250px 1fr 250px;
+            grid-template-rows: 100px 1fr 100px;
+            height: 100vh; width: 100vw;
+            gap: 20px; padding: 20px;
+            box-sizing: border-box;
+        }
+
+        /* 標題區 */
+        .header {
+            grid-column: 1 / 4;
+            display: flex; justify-content: space-between; align-items: center;
+            background: var(--glass); backdrop-filter: blur(10px);
+            border-bottom: 2px solid var(--neon-blue); padding: 0 40px;
+            border-radius: 15px;
+        }
+
+        .header h1 { 
+            font-size: 2rem; letter-spacing: 10px; color: var(--neon-blue);
+            text-shadow: 0 0 10px var(--neon-blue); margin: 0;
+        }
+
+        /* 視覺偵測區 (大螢幕) */
+        .main-view {
+            grid-column: 2; grid-row: 2;
+            position: relative; border-radius: 20px;
+            box-shadow: 0 0 30px rgba(0, 242, 255, 0.2);
+            border: 1px solid rgba(255,255,255,0.1);
+            overflow: hidden; background: #000;
+        }
+        #webcam { display: none; }
         #output_canvas { width: 100%; height: 100%; transform: scaleX(-1); object-fit: cover; }
-        .ui-layer { position: absolute; top: 20px; text-align: center; width: 100%; pointer-events: none; }
-        .counter { font-size: 8rem; font-weight: 900; color: var(--fr-blue); text-shadow: 0 0 20px var(--fr-blue); }
-        .btn-start { background: var(--fr-blue); border: none; padding: 20px 60px; font-size: 1.5rem; border-radius: 50px; cursor: pointer; font-weight: bold; margin-top: 20px; box-shadow: 0 0 15px var(--fr-blue); }
-        .btn-start:disabled { background: #333; color: #666; box-shadow: none; }
+
+        /* 排行榜 (左側) */
+        .side-panel {
+            grid-row: 2; background: var(--glass);
+            backdrop-filter: blur(10px); border-radius: 15px;
+            padding: 20px; border: 1px solid rgba(255,255,255,0.05);
+        }
+        .stats-title { color: var(--neon-pink); font-size: 0.8rem; letter-spacing: 2px; margin-bottom: 15px; }
+        .data-item { margin-bottom: 20px; }
+        .data-label { font-size: 0.7rem; color: #888; }
+        .data-value { font-size: 1.5rem; color: #fff; font-weight: bold; }
+
+        /* 計分大字 (浮動在畫面上) */
+        .score-overlay {
+            position: absolute; top: 20px; right: 40px;
+            text-align: right; pointer-events: none;
+        }
+        .score-big { font-size: 8rem; line-height: 1; color: var(--neon-blue); font-weight: 900; }
+
+        /* 控制區 (底部) */
+        .footer {
+            grid-column: 1 / 4; display: flex; justify-content: center; align-items: center;
+        }
+        .btn-start {
+            background: transparent; border: 2px solid var(--neon-blue);
+            color: var(--neon-blue); padding: 15px 80px; font-size: 1.5rem;
+            border-radius: 50px; cursor: pointer; transition: 0.4s;
+            text-transform: uppercase; font-weight: bold;
+            box-shadow: 0 0 15px rgba(0, 242, 255, 0.3);
+        }
+        .btn-start:hover { background: var(--neon-blue); color: #000; box-shadow: 0 0 30px var(--neon-blue); }
+
+        /* 能量條 GUI */
+        .power-bar-container { position: absolute; bottom: 20px; width: 90%; left: 5%; height: 10px; background: #222; border-radius: 5px; }
+        #powerBar { height: 100%; width: 0%; background: linear-gradient(90deg, var(--neon-blue), var(--neon-pink)); border-radius: 5px; transition: 0.1s; }
+
+        @keyframes rotateBg { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
-    <div class="vision-container" id="gameArea">
-        <video id="webcam"></video>
-        <canvas id="output_canvas"></canvas>
-        <div class="ui-layer">
-            <div id="timer" style="font-size: 2rem; color: #ff4757;">READY</div>
-            <div class="counter" id="score">0</div>
+    <div class="container">
+        <div class="header">
+            <h1>FR TECHNOLOGY</h1>
+            <div id="timer" style="color: var(--neon-pink); font-size: 1.5rem;">SYSTEM STANDBY</div>
+        </div>
+
+        <div class="side-panel">
+            <div class="stats-title">🌍 GLOBAL STATS</div>
+            <div class="data-item">
+                <div class="data-label">全服歷史次數</div>
+                <div class="data-value" id="globalTotal">---</div>
+            </div>
+            <div class="data-item">
+                <div class="data-label">世界單次最高分</div>
+                <div class="data-value" id="globalBest">---</div>
+            </div>
+            <hr style="border: 0.5px solid #333;">
+            <div class="stats-title" style="margin-top: 20px;">👤 SESSION</div>
+            <div class="data-item">
+                <div class="data-label">本次挑戰最高分</div>
+                <div class="data-value" id="sessionBest">0</div>
+            </div>
+        </div>
+
+        <div class="main-view" id="gameArea">
+            <video id="webcam"></video>
+            <canvas id="output_canvas"></canvas>
+            
+            <div class="score-overlay">
+                <div style="font-size: 1rem; color: var(--neon-blue);">SWING SPEED</div>
+                <div class="score-big" id="score">00</div>
+            </div>
+
+            <div class="power-bar-container">
+                <div id="powerBar"></div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <button class="btn-start" id="startBtn">啟動系統 & 挑戰</button>
         </div>
     </div>
-
-    <button class="btn-start" id="startBtn">進入全螢幕並啟動 AI</button>
 
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 
     <script>
-        // --- Firebase 配置 (請保持你的 Key) ---
+        // 你的 Firebase 身分證
         const firebaseConfig = {
             apiKey: "AIzaSyDUwqS9JFHgfEeW2Yk2gDE3evco4hUNsdM",
             authDomain: "fr-67-speed-df7c9.firebaseapp.com",
@@ -47,91 +160,84 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // --- MediaPipe 手部追蹤設定 ---
-        const videoElement = document.getElementById('webcam');
-        const canvasElement = document.getElementById('output_canvas');
-        const canvasCtx = canvasElement.getContext('2d');
-        let count = 0;
-        let isRunning = false;
-        let lastPos = { Left: 0, Right: 0 };
-
-        const hands = new Hands({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        // 雲端數據更新
+        db.ref('stats').on('value', (s) => {
+            const data = s.val() || { total: 0, best: 0 };
+            document.getElementById('globalTotal').innerText = data.total.toLocaleString();
+            document.getElementById('globalBest').innerText = data.best;
+            window.cloud = data;
         });
 
-        hands.setOptions({
-            maxNumHands: 2,
-            modelComplexity: 1,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
-        });
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('output_canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        let count = 0, isRunning = false, sessionBest = 0;
+        let lastY = { Left: 0, Right: 0 };
+
+        const hands = new Hands({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+        hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5 });
 
         hands.onResults((results) => {
-            canvasCtx.save();
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            ctx.save();
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            ctx.drawImage(results.image, 0,0,canvas.width,canvas.height);
 
-            if (results.multiHandLandmarks && isRunning) {
-                for (let i = 0; i < results.multiHandLandmarks.length; i++) {
-                    const landmarks = results.multiHandLandmarks[i];
-                    const label = results.multiHandedness[i].label; // "Left" 或 "Right"
+            if (results.multiHandLandmarks) {
+                results.multiHandLandmarks.forEach((marks, index) => {
+                    const side = results.multiHandedness[index].label;
+                    const y = marks[8].y; // 食指尖
                     
-                    // 取得食指指尖位置
-                    const currentY = landmarks[8].y;
-                    
-                    // 偵測揮動 (快速由上往下或由下往上)
-                    if (Math.abs(currentY - lastPos[label]) > 0.15) {
+                    if (isRunning && Math.abs(y - lastY[side]) > 0.1) {
                         count++;
-                        document.getElementById('score').innerText = count;
+                        document.getElementById('score').innerText = count.toString().padStart(2, '0');
+                        document.getElementById('powerBar').style.width = (count % 100) + "%";
                     }
-                    lastPos[label] = currentY;
+                    lastY[side] = y;
 
-                    // 畫出 AI 骨架 (CEO 專業感)
-                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00d4ff', lineWidth: 5});
-                    drawLandmarks(canvasCtx, landmarks, {color: '#ff4757', lineWidth: 2});
-                }
+                    // 繪製專業 GUI 骨架
+                    drawConnectors(ctx, marks, HAND_CONNECTIONS, {color: '#00f2ff', lineWidth: 4});
+                    drawLandmarks(ctx, marks, {color: '#ff007f', lineWidth: 1, radius: 2});
+                });
             }
-            canvasCtx.restore();
+            ctx.restore();
         });
 
-        const camera = new Camera(videoElement, {
-            onFrame: async () => {
-                await hands.send({image: videoElement});
-            },
-            width: 1280,
-            height: 720
-        });
+        const camera = new Camera(video, { onFrame: async () => { await hands.send({image: video}); }, width: 1280, height: 720 });
         camera.start();
 
-        // --- 遊戲控制 ---
-        document.getElementById('startBtn').onclick = () => {
+        startBtn.onclick = () => {
+            // 進入全螢幕
             if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
-            isRunning = true;
-            count = 0;
-            document.getElementById('startBtn').disabled = true;
+            
+            isRunning = true; count = 0;
+            document.getElementById('score').innerText = "00";
+            startBtn.disabled = true;
             
             let time = 20;
-            const timer = setInterval(() => {
+            document.getElementById('timer').innerText = `SYSTEM ACTIVE: ${time}s`;
+            
+            const clock = setInterval(() => {
                 time--;
-                document.getElementById('timer').innerText = time + "s";
+                document.getElementById('timer').innerText = `SYSTEM ACTIVE: ${time}s`;
                 if (time <= 0) {
-                    clearInterval(timer);
+                    clearInterval(clock);
                     isRunning = false;
-                    document.getElementById('startBtn').disabled = false;
-                    document.getElementById('timer').innerText = "DONE!";
+                    startBtn.disabled = false;
+                    document.getElementById('timer').innerText = "CHALLENGE COMPLETE";
+                    if (count > sessionBest) {
+                        sessionBest = count;
+                        document.getElementById('sessionBest').innerText = sessionBest;
+                    }
                     upload(count);
                 }
             }, 1000);
         };
 
         function upload(score) {
-            db.ref('stats').once('value').then(s => {
-                const data = s.val() || { total: 0, best: 0 };
-                db.ref('stats').set({
-                    total: data.total + score,
-                    best: Math.max(data.best, score)
-                });
-            });
+            const total = (window.cloud.total || 0) + score;
+            const best = Math.max(window.cloud.best || 0, score);
+            db.ref('stats').set({ total, best });
         }
     </script>
 </body>
