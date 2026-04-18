@@ -2,179 +2,137 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FR｜67 speed - 全球排行系統</title>
+    <title>FR｜67 SPEED - MediaPipe AI 專業版</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    
     <style>
-        :root { --fr-blue: #00d4ff; --fr-red: #ff4757; --fr-bg: #050508; }
-        body { background: var(--fr-bg); color: #fff; font-family: 'Segoe UI', "Microsoft JhengHei", sans-serif; margin: 0; overflow: hidden; user-select: none; }
-        .app-container { display: flex; flex-direction: column; align-items: center; padding: 20px; min-height: 100vh; }
-        .header h1 { font-size: 2.5rem; letter-spacing: 8px; background: linear-gradient(90deg, #fff, var(--fr-blue)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0; }
-        .vision-zone { position: relative; width: 340px; height: 255px; border: 3px solid #333; border-radius: 15px; overflow: hidden; margin-top: 20px; box-shadow: 0 0 20px rgba(0,212,255,0.2); }
-        #webcam { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
-        #trackerOverlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; transform: scaleX(-1); }
-        .stat-panel { width: 340px; text-align: center; background: #111; padding: 20px; border-radius: 0 0 15px 15px; border: 1px solid #222; }
-        .counter { font-size: 6.5rem; font-weight: 900; color: var(--fr-blue); line-height: 1; margin: 10px 0; text-shadow: 0 0 15px var(--fr-blue); }
-        .btn-start { width: 100%; background: var(--fr-blue); color: #000; border: none; padding: 15px; font-weight: bold; font-size: 1.2rem; border-radius: 8px; cursor: pointer; transition: 0.3s; }
-        .btn-start:disabled { background: #333; color: #666; cursor: not-allowed; }
-        .leaderboard { width: 340px; margin-top: 20px; background: #16161b; padding: 20px; border-radius: 15px; border-top: 2px solid var(--fr-blue); }
-        .rank-box { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #222; }
-        .rank-val { color: #ffd700; font-weight: bold; }
-        #securityWall { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,0,0,0.95); z-index: 10000; justify-content: center; align-items: center; text-align: center; color: white; }
+        :root { --fr-blue: #00d4ff; --fr-bg: #050508; }
+        body { background: var(--fr-bg); color: #fff; font-family: sans-serif; margin: 0; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
+        .vision-container { position: relative; width: 80%; height: 65vh; border: 3px solid #333; border-radius: 20px; overflow: hidden; }
+        #webcam { display: none; } /* 隱藏原始影像，改顯示繪圖層 */
+        #output_canvas { width: 100%; height: 100%; transform: scaleX(-1); object-fit: cover; }
+        .ui-layer { position: absolute; top: 20px; text-align: center; width: 100%; pointer-events: none; }
+        .counter { font-size: 8rem; font-weight: 900; color: var(--fr-blue); text-shadow: 0 0 20px var(--fr-blue); }
+        .btn-start { background: var(--fr-blue); border: none; padding: 20px 60px; font-size: 1.5rem; border-radius: 50px; cursor: pointer; font-weight: bold; margin-top: 20px; box-shadow: 0 0 15px var(--fr-blue); }
+        .btn-start:disabled { background: #333; color: #666; box-shadow: none; }
     </style>
 </head>
-<body oncontextmenu="return false;">
+<body>
 
-    <div id="securityWall"><h1>FR SECURITY<br>系統禁止存取源始碼</h1></div>
-
-    <div class="app-container">
-        <div class="header"><h1>FR｜67 speed</h1></div>
-        
-        <div class="vision-zone">
-            <video id="webcam" autoplay playsinline></video>
-            <canvas id="trackerOverlay"></canvas>
-        </div>
-
-        <div class="stat-panel">
-            <div id="timerDisplay" style="color:var(--fr-red); font-weight:bold;">STANDBY</div>
-            <div class="counter" id="countView">0</div>
-            <button class="btn-start" id="startBtn">啟動 20s 挑戰</button>
-        </div>
-
-        <div class="leaderboard">
-            <h3 style="margin:0 0 10px 0; font-size: 0.9rem; color: #888;">🌍 全球即時同步數據</h3>
-            <div class="rank-box"><span>全服歷史總次數</span><span class="rank-val" id="globalTotal">連線中...</span></div>
-            <div class="rank-box"><span>世界單次最高分</span><span class="rank-val" id="globalBest">連線中...</span></div>
+    <div class="vision-container" id="gameArea">
+        <video id="webcam"></video>
+        <canvas id="output_canvas"></canvas>
+        <div class="ui-layer">
+            <div id="timer" style="font-size: 2rem; color: #ff4757;">READY</div>
+            <div class="counter" id="score">0</div>
         </div>
     </div>
+
+    <button class="btn-start" id="startBtn">進入全螢幕並啟動 AI</button>
 
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 
     <script>
-        // 2. 使用你剛才複製的 Firebase 身分證
+        // --- Firebase 配置 (請保持你的 Key) ---
         const firebaseConfig = {
             apiKey: "AIzaSyDUwqS9JFHgfEeW2Yk2gDE3evco4hUNsdM",
             authDomain: "fr-67-speed-df7c9.firebaseapp.com",
             projectId: "fr-67-speed-df7c9",
-            // 注意：這裡是你的 Realtime Database 亞太伺服器網址
             databaseURL: "https://fr-67-speed-df7c9-default-rtdb.asia-southeast1.firebasedatabase.app",
-            storageBucket: "fr-67-speed-df7c9.firebasestorage.app",
-            messagingSenderId: "634537813920",
-            appId: "1:634537813920:web:bc10e38101935e395066c5",
-            measurementId: "G-PKDZ9PB0TZ"
+            appId: "1:634537813920:web:bc10e38101935e395066c5"
         };
-
-        // 初始化 Firebase
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // 監聽雲端資料庫更新
-        db.ref('stats').on('value', (snapshot) => {
-            const val = snapshot.val() || { total: 0, best: 0 };
-            document.getElementById('globalTotal').innerText = val.total.toLocaleString();
-            document.getElementById('globalBest').innerText = val.best;
-            window.currentGlobalData = val;
+        // --- MediaPipe 手部追蹤設定 ---
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        let count = 0;
+        let isRunning = false;
+        let lastPos = { Left: 0, Right: 0 };
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         });
 
-        // 3. 安全防禦模組 (禁止 F12 等)
-        window.addEventListener('keydown', (e) => {
-            if (e.keyCode === 123 || (e.ctrlKey && e.shiftKey && e.keyCode === 73) || (e.ctrlKey && e.keyCode === 85)) {
-                e.preventDefault();
-                document.getElementById('securityWall').style.display = 'flex';
-                setTimeout(() => document.getElementById('securityWall').style.display = 'none', 2000);
-            }
+        hands.setOptions({
+            maxNumHands: 2,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
         });
 
-        // 4. 手部追蹤與核心邏輯
-        const video = document.getElementById('webcam');
-        const overlay = document.getElementById('trackerOverlay');
-        const ctx = overlay.getContext('2d');
-        const startBtn = document.getElementById('startBtn');
-        let isRunning = false, count = 0, cooldown = 0, prevFrame = null;
+        hands.onResults((results) => {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
-        async function initCamera() {
-            try {
-                const s = await navigator.mediaDevices.getUserMedia({ video: { width: 340, height: 255 } });
-                video.srcObject = s;
-                overlay.width = 340; overlay.height = 255;
-            } catch (err) {
-                alert("相機開啟失敗，請確認權限！");
-            }
-        }
-
-        function runTracker() {
-            if (!isRunning) return;
-            const canvas = document.createElement('canvas');
-            const c = canvas.getContext('2d');
-            canvas.width = 60; canvas.height = 45;
-            c.drawImage(video, 0, 0, 60, 45);
-            const curr = c.getImageData(0, 0, 60, 45).data;
-
-            let mX = 0, mY = 0, pts = 0;
-            if (prevFrame) {
-                for (let i = 0; i < curr.length; i += 4) {
-                    // 偵測亮度與顏色差異 (動態捕捉)
-                    if (Math.abs(curr[i] - prevFrame[i]) > 125) {
-                        pts++; mX += (i/4)%60; mY += Math.floor((i/4)/60);
+            if (results.multiHandLandmarks && isRunning) {
+                for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                    const landmarks = results.multiHandLandmarks[i];
+                    const label = results.multiHandedness[i].label; // "Left" 或 "Right"
+                    
+                    // 取得食指指尖位置
+                    const currentY = landmarks[8].y;
+                    
+                    // 偵測揮動 (快速由上往下或由下往上)
+                    if (Math.abs(currentY - lastPos[label]) > 0.15) {
+                        count++;
+                        document.getElementById('score').innerText = count;
                     }
+                    lastPos[label] = currentY;
+
+                    // 畫出 AI 骨架 (CEO 專業感)
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00d4ff', lineWidth: 5});
+                    drawLandmarks(canvasCtx, landmarks, {color: '#ff4757', lineWidth: 2});
                 }
             }
+            canvasCtx.restore();
+        });
 
-            ctx.clearRect(0, 0, 340, 255);
-            // 改善偵測：必須有足夠大的動態面積 (pts > 80) 才顯示紅點
-            if (pts > 80) {
-                const cx = (mX / pts) * (340 / 60);
-                const cy = (mY / pts) * (255 / 45);
-                
-                // 繪製紅色定位點
-                ctx.fillStyle = "#ff4757";
-                ctx.beginPath(); ctx.arc(cx, cy, 15, 0, 7); ctx.fill();
-                ctx.strokeStyle = "white"; ctx.lineWidth = 2;
-                ctx.strokeRect(cx-20, cy-20, 40, 40);
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 1280,
+            height: 720
+        });
+        camera.start();
 
-                // 計次判定：門檻提高以避免雙手干擾
-                if (cooldown <= 0 && pts > 300) {
-                    count++;
-                    document.getElementById('countView').innerText = count;
-                    cooldown = 15; // 冷卻時間增加，防止單次大幅擺動重疊計次
-                }
-            }
-            if (cooldown > 0) cooldown--;
-            prevFrame = curr;
-            requestAnimationFrame(runTracker);
-        }
-
-        startBtn.onclick = () => {
-            isRunning = true; count = 0;
-            document.getElementById('countView').innerText = "0";
-            startBtn.disabled = true;
-            runTracker();
-            let time = 20.0;
-            const t = setInterval(() => {
-                time -= 0.1;
-                document.getElementById('timerDisplay').innerText = time.toFixed(1) + "s";
+        // --- 遊戲控制 ---
+        document.getElementById('startBtn').onclick = () => {
+            if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+            isRunning = true;
+            count = 0;
+            document.getElementById('startBtn').disabled = true;
+            
+            let time = 20;
+            const timer = setInterval(() => {
+                time--;
+                document.getElementById('timer').innerText = time + "s";
                 if (time <= 0) {
-                    clearInterval(t);
+                    clearInterval(timer);
                     isRunning = false;
-                    startBtn.disabled = false;
-                    document.getElementById('timerDisplay').innerText = "DONE!";
+                    document.getElementById('startBtn').disabled = false;
+                    document.getElementById('timer').innerText = "DONE!";
                     upload(count);
                 }
-            }, 100);
+            }, 1000);
         };
 
         function upload(score) {
-            const g = window.currentGlobalData || { total: 0, best: 0 };
-            const newTotal = g.total + score;
-            const newBest = Math.max(g.best, score);
-            // 寫入雲端
-            db.ref('stats').set({ total: newTotal, best: newBest })
-              .then(() => {
-                  alert("挑戰結束！得分 " + score + " 已同步至全球資料庫。");
-              });
+            db.ref('stats').once('value').then(s => {
+                const data = s.val() || { total: 0, best: 0 };
+                db.ref('stats').set({
+                    total: data.total + score,
+                    best: Math.max(data.best, score)
+                });
+            });
         }
-
-        initCamera();
     </script>
 </body>
 </html>
