@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FR-Speed | 67 speed</title>
+    <style>
+        body { background: #000; color: #fff; font-family: 'Arial', sans-serif; text-align: center; margin: 0; }
+        .header { padding: 20px; background: #111; border-bottom: 2px solid #00d4ff; }
+        video { width: 90%; max-width: 400px; border-radius: 15px; margin-top: 10px; border: 2px solid #333; transform: scaleX(-1); }
+        .main-ui { padding: 20px; }
+        .count-text { font-size: 6rem; color: #00d4ff; font-weight: bold; margin: 0; text-shadow: 0 0 20px rgba(0,212,255,0.5); }
+        .timer { font-size: 1.5rem; color: #ff4757; margin-bottom: 10px; }
+        button { background: #00d4ff; color: #000; border: none; padding: 15px 40px; font-size: 1.2rem; font-weight: bold; border-radius: 50px; cursor: pointer; transition: 0.3s; }
+        button:disabled { background: #444; color: #888; cursor: not-allowed; }
+        
+        .stats-container { display: flex; justify-content: space-around; padding: 20px; background: #111; margin-top: 20px; }
+        .leaderboard { text-align: left; padding: 20px; max-width: 400px; margin: 0 auto; }
+        .rank-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #222; }
+        .rank-item:first-child { color: #ffd700; font-size: 1.2rem; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>FR-SPEED 揮動挑戰</h1>
+    </div>
+
+    <div class="main-ui">
+        <div class="timer" id="timerText">時間：20s</div>
+        <div class="count-text" id="countDisplay">0</div>
+        <p>揮動次數</p>
+        <button id="startBtn">開始挑戰 (20秒)</button>
+    </div>
+
+    <video id="video" autoplay playsinline></video>
+
+    <div class="stats-container">
+        <div>
+            <div style="color: #888;">累計總揮動</div>
+            <div id="totalSwings" style="font-size: 1.5rem;">0</div>
+        </div>
+    </div>
+
+    <div class="leaderboard">
+        <h3>🏆 排行榜 (TOP 5)</h3>
+        <div id="rankList"></div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const countDisplay = document.getElementById('countDisplay');
+        const timerText = document.getElementById('timerText');
+        const startBtn = document.getElementById('startBtn');
+        const totalDisplay = document.getElementById('totalSwings');
+        const rankList = document.getElementById('rankList');
+
+        let count = 0;
+        let isTesting = false;
+        let totalSwings = parseInt(localStorage.getItem('fr_total_swings')) || 0;
+        let history = JSON.parse(localStorage.getItem('fr_history')) || [];
+
+        // 初始化相機
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+                video.srcObject = stream;
+            } catch (e) { alert("請允許開啟相機以進行測速"); }
+        }
+
+        // 揮動偵測邏輯
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d', {willReadFrequently: true});
+        let lastFrameData = null;
+
+        function detectMotion() {
+            if (!isTesting) return;
+            
+            canvas.width = 100;
+            canvas.height = 100;
+            ctx.drawImage(video, 0, 0, 100, 100);
+            const currentFrame = ctx.getImageData(0, 0, 100, 100).data;
+
+            if (lastFrameData) {
+                let diff = 0;
+                for (let i = 0; i < currentFrame.length; i += 4) {
+                    // 計算像素差異（亮度）
+                    const currentAvg = (currentFrame[i] + currentFrame[i+1] + currentFrame[i+2]) / 3;
+                    const lastAvg = (lastFrameData[i] + lastFrameData[i+1] + lastFrameData[i+2]) / 3;
+                    if (Math.abs(currentAvg - lastAvg) > 40) diff++;
+                }
+
+                // 如果畫面有超過 15% 的像素在劇烈變動
+                if (diff > 1500) { 
+                    count++;
+                    countDisplay.innerText = count;
+                    lastFrameData = null; // 稍微冷卻，防止單次大幅度變動重疊計算
+                }
+            }
+            lastFrameData = currentFrame;
+            requestAnimationFrame(detectMotion);
+        }
+
+        // 開始挑戰
+        startBtn.onclick = () => {
+            isTesting = true;
+            count = 0;
+            countDisplay.innerText = "0";
+            startBtn.disabled = true;
+            let timeLeft = 20;
+
+            detectMotion();
+
+            const timer = setInterval(() => {
+                timeLeft--;
+                timerText.innerText = `時間：${timeLeft}s`;
+                if (timeLeft <= 0) {
+                    clearInterval(timer);
+                    endGame();
+                }
+            }, 1000);
+        };
+
+        function endGame() {
+            isTesting = false;
+            startBtn.disabled = false;
+            timerText.innerText = "時間到！";
+            
+            // 儲存數據
+            totalSwings += count;
+            localStorage.setItem('fr_total_swings', totalSwings);
+            
+            history.push({ score: count, date: new Date().toLocaleString() });
+            history.sort((a, b) => b.score - a.score);
+            history = history.slice(0, 5); // 只留前五名
+            localStorage.setItem('fr_history', JSON.stringify(history));
+
+            updateUI();
+        }
+
+        function updateUI() {
+            totalDisplay.innerText = totalSwings;
+            rankList.innerHTML = history.map((item, index) => `
+                <div class="rank-item">
+                    <span>第 ${index + 1} 名</span>
+                    <span>${item.score} 次</span>
+                </div>
+            `).join('');
+        }
+
+        initCamera();
+        updateUI();
+    </script>
+</body>
+</html>
